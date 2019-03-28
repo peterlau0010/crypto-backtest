@@ -7,14 +7,16 @@ import sys  # To find out the script name (in argv[0])
 
 # Import the backtrader platform
 import backtrader as bt
-
+import config as cfg 
 
 # Create a Stratey
 class TestStrategy(bt.Strategy):
     params = (
-        ('sma10', 10),
-        ('sma20', 20),
-        ('sma100', 100),
+        ('smaShort', 10),
+        ('smaLong', 20),
+        ('emaShort', 10),
+        ('emaLong', 20),
+        ('rsiPeriod', 10),
     )
 
     def log(self, txt, dt=None):
@@ -32,20 +34,31 @@ class TestStrategy(bt.Strategy):
         self.buycomm = None
 
         # Add a MovingAverageSimple indicator
-        self.sma10 = bt.indicators.SimpleMovingAverage(
-            self.datas[0], period=self.params.sma10)
+        self.smaShort = bt.indicators.SimpleMovingAverage(
+            self.datas[0], period=self.params.smaShort)
 
-        self.sma20 = bt.indicators.SimpleMovingAverage(
-            self.datas[0], period=self.params.sma20)
+        self.smaLong = bt.indicators.SimpleMovingAverage(
+            self.datas[0], period=self.params.smaLong)
 
-        self.sma100 = bt.indicators.SimpleMovingAverage(
-            self.datas[0], period=self.params.sma100)
+        self.emaShort = bt.indicators.EMA(period=self.params.emaShort)
+
+        self.emaLong = bt.indicators.EMA(period=self.params.emaLong)
+
+        self.psar = bt.indicators.ParabolicSAR()
+
+        self.rsi = bt.indicators.RelativeMomentumIndex(upperband=80, lowerband =20, period=self.params.rsiPeriod)
+
+        #self.buySignal = bt.indicators.CrossUp(self.emaShort, self.emaLong)
+        self.buySignal = bt.indicators.If(self.rsi < 30, self.emaShort > self.emaLong)
+        
+        self.sellSignal = bt.indicators.CrossUp(self.psar, self.emaShort)
+        self.sellSignal2 = self.rsi > 90
+
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
             # Buy/Sell order submitted/accepted to/by broker - Nothing to do
             return
-
         # Check if an order has been completed
         # Attention: broker could reject order if not enough cash
         if order.status in [order.Completed]:
@@ -80,7 +93,8 @@ class TestStrategy(bt.Strategy):
 
     def next(self):
         # Simply log the closing price of the series from the reference
-        self.log('Close, %.2f' % self.dataclose[0])
+        #self.log('Close, %.2f' % self.dataclose[0])
+        print (bool(self.rsi < 30 and self.emaShort > self.emaLong ))
 
         # Check if an order is pending ... if yes, we cannot send a 2nd one
         if self.order:
@@ -88,10 +102,8 @@ class TestStrategy(bt.Strategy):
 
         # Check if we are in the market
         if not self.position:
-
             # Not yet ... we MIGHT BUY if ...
-            if self.sma10[0] > self.sma20[0]:
-
+            if self.buySignal:
                 # BUY, BUY, BUY!!! (with all possible default parameters)
                 self.log('BUY CREATE, %.2f' % self.dataclose[0])
 
@@ -99,14 +111,12 @@ class TestStrategy(bt.Strategy):
                 self.order = self.buy()
 
         else:
-
-            if self.sma10[0] < self.sma20[0]:
+            if self.sellSignal or self.sellSignal2:
                 # SELL, SELL, SELL!!! (with all possible default parameters)
                 self.log('SELL CREATE, %.2f' % self.dataclose[0])
 
                 # Keep track of the created order to avoid a 2nd order
                 self.order = self.sell()
-
 
 if __name__ == '__main__':
     # Create a cerebro entity
@@ -119,7 +129,7 @@ if __name__ == '__main__':
     # because it could have been called from anywhere
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
     datapath = os.path.abspath(
-        os.getcwd() + '/BNBUSDT_' + str(datetime.datetime.now().strftime("%Y_%m_%d")))
+        os.getcwd() + '/' + cfg.currency['currency'] + '_' + str(datetime.datetime.now().strftime("%Y_%m_%d")))
 
     # Create a Data Feed
     data = bt.feeds.GenericCSVData(
@@ -141,7 +151,7 @@ if __name__ == '__main__':
     cerebro.adddata(data)
 
     # Set our desired cash start
-    cerebro.broker.setcash(500.0)
+    cerebro.broker.setcash(5000.0)
 
     # Add a FixedSize sizer according to the stake
     cerebro.addsizer(bt.sizers.PercentSizer)
