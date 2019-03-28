@@ -12,7 +12,9 @@ import backtrader as bt
 # Create a Stratey
 class TestStrategy(bt.Strategy):
     params = (
-        ('maperiod', 15),
+        ('sma10', 10),
+        ('sma20', 20),
+        ('sma100', 100),
     )
 
     def log(self, txt, dt=None):
@@ -30,18 +32,14 @@ class TestStrategy(bt.Strategy):
         self.buycomm = None
 
         # Add a MovingAverageSimple indicator
-        self.sma = bt.indicators.SimpleMovingAverage(
-            self.datas[0], period=self.params.maperiod)
+        self.sma10 = bt.indicators.SimpleMovingAverage(
+            self.datas[0], period=self.params.sma10)
 
-        # Indicators for the plotting show
-        bt.indicators.ExponentialMovingAverage(self.datas[0], period=25)
-        bt.indicators.WeightedMovingAverage(self.datas[0], period=25,
-                                            subplot=True)
-        bt.indicators.StochasticSlow(self.datas[0])
-        bt.indicators.MACDHisto(self.datas[0])
-        rsi = bt.indicators.RSI(self.datas[0])
-        bt.indicators.SmoothedMovingAverage(rsi, period=10)
-        bt.indicators.ATR(self.datas[0], plot=False)
+        self.sma20 = bt.indicators.SimpleMovingAverage(
+            self.datas[0], period=self.params.sma20)
+
+        self.sma100 = bt.indicators.SimpleMovingAverage(
+            self.datas[0], period=self.params.sma100)
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -71,7 +69,6 @@ class TestStrategy(bt.Strategy):
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log('Order Canceled/Margin/Rejected')
 
-        # Write down: no pending order
         self.order = None
 
     def notify_trade(self, trade):
@@ -93,7 +90,7 @@ class TestStrategy(bt.Strategy):
         if not self.position:
 
             # Not yet ... we MIGHT BUY if ...
-            if self.dataclose[0] > self.sma[0]:
+            if self.sma10[0] > self.sma20[0]:
 
                 # BUY, BUY, BUY!!! (with all possible default parameters)
                 self.log('BUY CREATE, %.2f' % self.dataclose[0])
@@ -103,12 +100,14 @@ class TestStrategy(bt.Strategy):
 
         else:
 
-            if self.dataclose[0] < self.sma[0]:
+            if self.sma10[0] < self.sma20[0]:
                 # SELL, SELL, SELL!!! (with all possible default parameters)
                 self.log('SELL CREATE, %.2f' % self.dataclose[0])
 
                 # Keep track of the created order to avoid a 2nd order
                 self.order = self.sell()
+
+
 if __name__ == '__main__':
     # Create a cerebro entity
     cerebro = bt.Cerebro()
@@ -119,12 +118,13 @@ if __name__ == '__main__':
     # Datas are in a subfolder of the samples. Need to find where the script is
     # because it could have been called from anywhere
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    datapath = os.path.abspath(os.getcwd() + '/BNBUSDT_' + str(datetime.datetime.now().strftime("%Y_%m_%d")))
+    datapath = os.path.abspath(
+        os.getcwd() + '/BNBUSDT_' + str(datetime.datetime.now().strftime("%Y_%m_%d")))
 
     # Create a Data Feed
     data = bt.feeds.GenericCSVData(
         dataname=datapath,
-        fromdate=datetime.datetime(2018, 1, 1),
+        fromdate=datetime.datetime(2019, 1, 1),
         dtformat=('%Y-%m-%d %H:%M:%S'),
         datetime=0,
         high=2,
@@ -133,21 +133,21 @@ if __name__ == '__main__':
         close=4,
         volume=5,
         openinterest=-1,
-        timeframe= bt.TimeFrame.Minutes,
-        compression= 1
+        timeframe=bt.TimeFrame.Minutes,
+        compression=1
     )
 
     # Add the Data Feed to Cerebro
     cerebro.adddata(data)
 
     # Set our desired cash start
-    cerebro.broker.setcash(1000.0)
+    cerebro.broker.setcash(500.0)
 
     # Add a FixedSize sizer according to the stake
-    cerebro.addsizer(bt.sizers.FixedSize, stake=100)
+    cerebro.addsizer(bt.sizers.PercentSizer)
 
     # Set the commission
-    cerebro.broker.setcommission(commission=0.0)
+    cerebro.broker.setcommission(commission=0.00075)
 
     # Print out the starting conditions
     print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
