@@ -40,19 +40,25 @@ class TestStrategy(bt.Strategy):
         self.smaLong = bt.indicators.SimpleMovingAverage(
             self.datas[0], period=self.params.smaLong)
 
-        self.emaShort = bt.indicators.EMA(period=self.params.emaShort)
+        # self.emaShort = bt.indicators.EMA(period=self.params.emaShort)
 
         self.emaLong = bt.indicators.EMA(period=self.params.emaLong)
 
         self.psar = bt.indicators.ParabolicSAR()
 
-        self.rsi = bt.indicators.RelativeMomentumIndex(upperband=80, lowerband =20, period=self.params.rsiPeriod)
+        #self.rsi = bt.indicators.RelativeMomentumIndex(upperband=80, lowerband =20, period=self.params.rsiPeriod)
 
-        #self.buySignal = bt.indicators.CrossUp(self.emaShort, self.emaLong)
-        self.buySignal = bt.indicators.If(self.rsi < 30, self.emaShort > self.emaLong)
-        
-        self.sellSignal = bt.indicators.CrossUp(self.psar, self.emaShort)
-        self.sellSignal2 = self.rsi > 90
+        self.adx = bt.indicators.AverageDirectionalMovementIndex()  
+
+        self.buySignal = []
+        self.sellSignal = []
+        self.buySignal.append(bt.indicators.CrossUp(self.data, self.emaLong))
+        self.buySignal.append(self.data > self.psar)
+        # self.buySignal.append(self.smaShort > self.smaLong)
+        self.buySignal.append(self.adx > 30)
+        #self.sellSignal = bt.indicators.CrossUp(self.psar, self.emaShort)
+        # self.sellSignal2 = self.rsi > 90
+        self.sellSignal.append(self.psar > self.data)
 
 
     def notify_order(self, order):
@@ -94,7 +100,6 @@ class TestStrategy(bt.Strategy):
     def next(self):
         # Simply log the closing price of the series from the reference
         #self.log('Close, %.2f' % self.dataclose[0])
-        print (bool(self.rsi < 30 and self.emaShort > self.emaLong ))
 
         # Check if an order is pending ... if yes, we cannot send a 2nd one
         if self.order:
@@ -103,7 +108,7 @@ class TestStrategy(bt.Strategy):
         # Check if we are in the market
         if not self.position:
             # Not yet ... we MIGHT BUY if ...
-            if self.buySignal:
+            if all(self.buySignal) and self.adx[0]> self.adx[-1]:
                 # BUY, BUY, BUY!!! (with all possible default parameters)
                 self.log('BUY CREATE, %.2f' % self.dataclose[0])
 
@@ -111,11 +116,16 @@ class TestStrategy(bt.Strategy):
                 self.order = self.buy()
 
         else:
-            if self.sellSignal or self.sellSignal2:
+            if any(self.sellSignal):
                 # SELL, SELL, SELL!!! (with all possible default parameters)
                 self.log('SELL CREATE, %.2f' % self.dataclose[0])
 
                 # Keep track of the created order to avoid a 2nd order
+                self.order = self.sell()
+            elif (self.buyprice - self.data.low) > 20:
+                print(self.buyprice)
+                print(self.data.low)
+                self.log('SELL CREATE stop loss, %.2f' % self.dataclose[0])
                 self.order = self.sell()
 
 if __name__ == '__main__':
@@ -134,7 +144,7 @@ if __name__ == '__main__':
     # Create a Data Feed
     data = bt.feeds.GenericCSVData(
         dataname=datapath,
-        fromdate=datetime.datetime(2019, 1, 1),
+        fromdate=datetime.datetime(2018, 12, 1),
         dtformat=('%Y-%m-%d %H:%M:%S'),
         datetime=0,
         high=2,
@@ -151,10 +161,10 @@ if __name__ == '__main__':
     cerebro.adddata(data)
 
     # Set our desired cash start
-    cerebro.broker.setcash(5000.0)
+    cerebro.broker.setcash(100000.0)
 
     # Add a FixedSize sizer according to the stake
-    cerebro.addsizer(bt.sizers.PercentSizer)
+    cerebro.addsizer(bt.sizers.PercentSizer, percents=50)
 
     # Set the commission
     cerebro.broker.setcommission(commission=0.00075)
