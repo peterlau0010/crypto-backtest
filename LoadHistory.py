@@ -1,3 +1,4 @@
+#%%
 import config as cfg 
 import pandas as pd
 import datetime
@@ -16,3 +17,5 @@ cryptocurrency['Open Time'] = pd.to_datetime(cryptocurrency['Open Time'],unit='m
 cryptocurrency.set_index('Open Time', inplace=True)
 
 cryptocurrency.to_csv( str(symbol) + '_'+ str(datetime.datetime.now().strftime('%Y_%m_%d')), date_format='%Y-%m-%d %H:%M:%S')
+
+print('Done')

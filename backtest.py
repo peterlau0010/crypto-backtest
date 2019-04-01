@@ -1,9 +1,11 @@
+# %%
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import datetime  # For datetime objects
 import os.path  # To manage paths
 import sys  # To find out the script name (in argv[0])
+import matplotlib
 
 # Import the backtrader platform
 import backtrader as bt
@@ -23,13 +25,12 @@ class TestStrategy(bt.Strategy):
         ('stoptype', bt.Order.StopTrail),
         ('trailamount', 0.0),
         ('trailpercent', 0.02),
-        ('macd1',12),
-        ('macd2',26),
-        ('macdsig',9),
+        ('macd1', 12),
+        ('macd2', 26),
+        ('macdsig', 9),
     )
 
     def log(self, txt, dt=None, doprint=False):
-        ''' Logging function fot this strategy'''
         if self.params.printlog or doprint:
             dt = dt or self.datas[0].datetime.date(0)
             print('%s, %s' % (dt.isoformat(), txt))
@@ -49,7 +50,20 @@ class TestStrategy(bt.Strategy):
                                        period_me1=self.p.macd1,
                                        period_me2=self.p.macd2,
                                        period_signal=self.p.macdsig)
-        self.psar = bt.indicators.ParabolicSAR(self.data) 
+        self.psar = bt.indicators.ParabolicSAR(self.data)
+        self.kdj = bt.indicators.Stochastic(self.data)
+        self.rsi = bt.indicators.RelativeStrengthIndex(self.data)
+
+        self.buysingal = bt.And(
+            self.macd.macd > self.macd.signal,
+            self.kdj.k < 30,
+            self.kdj.d < 40,
+            self.rsi < 30,
+        )
+
+        self.sellsignal = bt.And(
+            
+        )
 
     def notify_order(self, order):
         # self.log('An order new/changed/executed/canceled has been received')
@@ -102,7 +116,7 @@ class TestStrategy(bt.Strategy):
         if not self.position:
 
             # Not yet ... we MIGHT BUY if ...
-            if self.macd > self.data.lines.close[0]:
+            if self.buysingal:
 
                 # BUY, BUY, BUY!!! (with all possible default parameters)
                 self.log('BUY CREATE, %.2f' % self.dataclose[0])
@@ -110,7 +124,7 @@ class TestStrategy(bt.Strategy):
                 # Keep track of the created order to avoid a 2nd order
                 self.order = self.buy()
 
-        elif self.psar > self.data.lines.close[0]:
+        elif self.macd.macd < self.macd.signal:
             # SELL, SELL, SELL!!! (with all possible default parameters)
             self.log('SELL CREATE, %.2f' % self.dataclose[0])
 
@@ -144,56 +158,59 @@ class TestStrategy(bt.Strategy):
 
 
 if __name__ == '__main__':
-    # Create a cerebro entity
-    cerebro = bt.Cerebro()
+    try:
+        # Create a cerebro entity
+        cerebro = bt.Cerebro()
 
-    # Add a strategy
-    # strats = cerebro.optstrategy(
-    #     TestStrategy,
-    #     maperiod=range(10, 31))
-    cerebro.addstrategy(TestStrategy)
-    # Datas are in a subfolder of the samples. Need to find where the script is
-    # because it could have been called from anywhere
-    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    datapath = os.path.abspath(
-        os.getcwd() + '/' + cfg.currency['currency'] + '_' + str(datetime.datetime.now().strftime("%Y_%m_%d")))
+        # Add a strategy
+        # strats = cerebro.optstrategy(
+        #     TestStrategy,
+        #     maperiod=range(10, 31))
+        cerebro.addstrategy(TestStrategy)
+        # Datas are in a subfolder of the samples. Need to find where the script is
+        # because it could have been called from anywhere
+        modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+        datapath = os.path.abspath(
+            os.getcwd() + '/' + cfg.currency['currency'] + '_' + str(datetime.datetime.now().strftime("%Y_%m_%d")))
 
-    # Create a Data Feed
-    data = bt.feeds.GenericCSVData(
-        dataname=datapath,
-        fromdate=datetime.datetime(2018, 12, 1),
-        dtformat=('%Y-%m-%d %H:%M:%S'),
-        datetime=0,
-        high=2,
-        low=3,
-        open=1,
-        close=4,
-        volume=5,
-        openinterest=-1,
-        timeframe=bt.TimeFrame.Minutes,
-        compression=240
-    )
+        # Create a Data Feed
+        data = bt.feeds.GenericCSVData(
+            dataname=datapath,
+            fromdate=datetime.datetime(2018, 12, 1),
+            dtformat=('%Y-%m-%d %H:%M:%S'),
+            datetime=0,
+            high=2,
+            low=3,
+            open=1,
+            close=4,
+            volume=5,
+            openinterest=-1,
+            timeframe=bt.TimeFrame.Minutes,
+            compression=240
+        )
 
-    # Add the Data Feed to Cerebro
-    cerebro.adddata(data)
+        # Add the Data Feed to Cerebro
+        cerebro.adddata(data)
 
-    # Set our desired cash start
-    cerebro.broker.setcash(500.0)
+        # Set our desired cash start
+        cerebro.broker.setcash(500.0)
 
-    # Add a FixedSize sizer according to the stake
-    cerebro.addsizer(bt.sizers.PercentSizer, percents=90)
+        # Add a FixedSize sizer according to the stake
+        cerebro.addsizer(bt.sizers.PercentSizer, percents=90)
 
-    # Set the commission
-    cerebro.broker.setcommission(commission=0.00075)
+        # Set the commission
+        cerebro.broker.setcommission(commission=0.00075)
 
-    # Print out the starting conditions
-    print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
+        # Print out the starting conditions
+        print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
 
-    # Run over everything
-    cerebro.run()
+        # Run over everything
+        cerebro.run()
 
-    # Print out the final result
-    print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
+        # Print out the final result
+        print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
 
-    # Plot the result
-    cerebro.plot()
+        # Plot the result
+        # cerebro.plot()
+    except Exception as ex:
+        print(ex)
