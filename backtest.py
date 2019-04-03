@@ -20,8 +20,8 @@ import config as cfg
 
 class TestStrategy(bt.Strategy):
     params = (
-        ('kdPeriod', 5),
-        ('printlog', True),
+        ('kdPeriod', 6),
+        ('printlog', False),
         ('stoptype', bt.Order.StopTrail),
         ('trailamount', 0.0),
         ('trailpercent', 0.02),
@@ -51,8 +51,8 @@ class TestStrategy(bt.Strategy):
         # Add a MovingAverageSimple indicator
         # self.sma = btind.SimpleMovingAverage(self.data, period=self.p.maperiod)
         self.macd = bt.indicators.MACD(self.data)
-        self.psar = bt.indicators.ParabolicSAR(self.data)
-        self.kd = bt.indicators.StochasticFull(self.data)
+        # self.psar = bt.indicators.ParabolicSAR(self.data)
+        self.kd = bt.indicators.StochasticFull(self.data,period=self.p.kdPeriod)
         self.rsiShort = bt.indicators.RelativeStrengthIndex(self.data,period=self.p.rsiShort)
         # self.rsi12 = bt.indicators.RelativeStrengthIndex(self.data,period=12)
 
@@ -61,12 +61,13 @@ class TestStrategy(bt.Strategy):
         # self.rsiCrossUp = bt.indicators.CrossUp(self.rsi6, self.rsi12)
 
         self.buysingal = bt.And(
-            self.macd.lines.macd > self.macd.lines.signal,
-            self.kd.lines.percK < 20,
-            self.kd.lines.percD < 20,
+            # self.macd.lines.macd > self.macd.lines.signal,
+            self.kd.lines.percK < 15,
+            self.kd.lines.percD < 15,
+            self.kd.lines.percK > self.kd.lines.percD,
             # bt.indicators.CrossUp(self.kd.lines.percD, self.kd.lines.percK),
-            self.rsiShort.lines.rsi < 30, #RSI below 30, under buy, short turn use 9, long use 14
-            self.dataclose > self.psar.lines.psar
+            self.rsiShort.lines.rsi < 20, #RSI below 30, over sell, short turn use 9, long use 14
+            # self.dataclose > self.psar.lines.psar
             
             # self.rsiCrossUp,
         )
@@ -75,11 +76,11 @@ class TestStrategy(bt.Strategy):
             # self.percKCrossDownPercD,
             # self.kd.lines.percK < 80,
             # self.macd.lines.macd < self.macd.lines.signal,
-            self.kd.lines.percD > 80,
-            self.kd.lines.percK > 80,
+            self.kd.lines.percD > 85,
+            self.kd.lines.percK > 85,
             # bt.indicators.CrossDown(self.kd.lines.percD, self.kd.lines.percK),
             self.rsiShort.lines.rsi > 70, #RSI over 70, over buy
-            self.dataclose < self.psar.lines.psar
+            # self.dataclose < self.psar.lines.psar
         )
 
     def notify_order(self, order):
@@ -134,12 +135,14 @@ class TestStrategy(bt.Strategy):
 
             # Not yet ... we MIGHT BUY if ...
             if self.buysingal:
+                if self.kd.lines.percK[-1] > self.kd.lines.percK[-2]:
+                    if self.kd.lines.percK[0] > self.kd.lines.percK[-1]:
 
-                # BUY, BUY, BUY!!! (with all possible default parameters)
-                self.log('BUY CREATE, %.2f' % self.dataclose[0])
+                        # BUY, BUY, BUY!!! (with all possible default parameters)
+                        self.log('BUY CREATE, %.2f' % self.dataclose[0])
 
-                # Keep track of the created order to avoid a 2nd order
-                self.order = self.buy()
+                        # Keep track of the created order to avoid a 2nd order
+                        self.order = self.buy()
 
         else:
 
@@ -182,7 +185,7 @@ if __name__ == '__main__':
         cerebro = bt.Cerebro()
 
         # Add a strategy
-        # strats = cerebro.optstrategy(TestStrategy,kdPeriod=range(3, 10), kdPercK=range(10,30,5),kdPercD=range(10,30,5))
+        # strats = cerebro.optstrategy(TestStrategy,kdPeriod=range(6, 10), kdPercK=range(10,30,5),kdPercD=range(10,30,5))
         cerebro.addstrategy(TestStrategy)
         # Datas are in a subfolder of the samples. Need to find where the script is
         # because it could have been called from anywhere
@@ -193,7 +196,7 @@ if __name__ == '__main__':
         # Create a Data Feed
         data = bt.feeds.GenericCSVData(
             dataname=datapath,
-            fromdate=datetime.datetime(2018, 1, 1),
+            fromdate=datetime.datetime(2018, 10, 1),
             todate=datetime.datetime(2018, 12, 31),
             dtformat=('%Y-%m-%d %H:%M:%S'),
             datetime=0,
@@ -229,6 +232,6 @@ if __name__ == '__main__':
         print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
 
         # Plot the result
-        cerebro.plot()
+        # cerebro.plot()
     except Exception as ex:
         print(ex)
