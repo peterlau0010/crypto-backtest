@@ -25,20 +25,38 @@ class St(bt.Strategy):
             print('%s, %s' % (dt.isoformat(), txt))
 
     def __init__(self):
-        self.dataclose = self.datas[0].close
+        # self.dataclose = self.datas[0].close
         self.order = None
-        self.kd = bt.indicators.StochasticFull(self.data,period=6)
+        self.previousbuyprice=None
+        self.kd = bt.indicators.StochasticFull(self.data,period=5, safediv=True)
+        self.macd = bt.indicators.MACD(self.data)
         self.rsiShort = bt.indicators.RelativeStrengthIndex(self.data,period=9)
+        self.emaShort = bt.indicators.ExponentialMovingAverage(self.data,period=50)
+        self.emaLong = bt.indicators.ExponentialMovingAverage(self.data,period=100)
         self.buysingal = bt.And(
-            # self.macd.lines.macd > self.macd.lines.signal,
-            self.kd.lines.percK < 15,
-            self.kd.lines.percD < 15,
+            self.macd.lines.macd > self.macd.lines.signal,
+            self.kd.lines.percK < 20,
+            self.kd.lines.percD < 20,
             self.kd.lines.percK > self.kd.lines.percD,
+            # EMA
+            self.emaShort>self.emaLong,
             # bt.indicators.CrossUp(self.kd.lines.percD, self.kd.lines.percK),
             self.rsiShort.lines.rsi < 20, #RSI below 30, over sell, short turn use 9, long use 14
             # self.dataclose > self.psar.lines.psar
             
             # self.rsiCrossUp,
+        )
+
+        self.sellsingal = bt.And(
+            # self.emaShort < self.emaLong,
+            # self.percKCrossDownPercD,
+            # self.kd.lines.percK > 80,
+            # self.macd.lines.macd < self.macd.lines.signal,
+            # self.kd.lines.percD > 85,
+            # self.kd.lines.percK > 85,
+            # bt.indicators.CrossDown(self.kd.lines.percD, self.kd.lines.percK),
+            self.rsiShort.lines.rsi > 70, #RSI over 70, over buy
+            # self.dataclose < self.psar.lines.psar
         )
     # def stop(self):
     #     self.log('(KD Period %2d)  (KD percK %2d) (KD percD %2d) Ending Value %.2f' %
@@ -53,19 +71,20 @@ class St(bt.Strategy):
         # Attention: broker could reject order if not enough cash
         if order.status in [order.Completed]:
             if order.isbuy():
-                self.log(
-                    'BUY EXECUTED, Price: %.2f, Cost: %.2f, Comm %.2f' %
-                    (order.executed.price,
-                     order.executed.value,
-                     order.executed.comm))
+                self.previousbuyprice=order.executed.price
+                # self.log(
+                #     'BUY EXECUTED, Price: %.2f, Cost: %.2f, Comm %.2f' %
+                #     (order.executed.price,
+                #      order.executed.value,
+                #      order.executed.comm))
 
                 self.buyprice = order.executed.price
                 self.buycomm = order.executed.comm
-            else:  # Sell
-                self.log('SELL EXECUTED, Price: %.2f, Cost: %.2f, Comm %.2f' %
-                         (order.executed.price,
-                          order.executed.value,
-                          order.executed.comm))
+            # else:  # Sell
+                # self.log('SELL EXECUTED, Price: %.2f, Cost: %.2f, Comm %.2f' %
+                #          (order.executed.price,
+                #           order.executed.value,
+                #           order.executed.comm))
 
             self.bar_executed = len(self)
 
@@ -81,41 +100,32 @@ class St(bt.Strategy):
         self.log('OPERATION PROFIT, GROSS %.2f, NET %.2f' %
                  (trade.pnl, trade.pnlcomm))
     def next(self):
-        # self.log('Close, %.2f' % self.dataclose[0])
         if not self.position:
             if self.buysingal:
                 if self.rsiShort[0] > self.rsiShort[-1]:
-                    if self.kd.lines.percK[-1] > self.kd.lines.percK[-2]:
-                        if self.kd.lines.percK[0] > self.kd.lines.percK[-1]:
-                            o = self.buy()
-                            self.order = None
+                    if self.kd.lines.percK[0] > self.kd.lines.percK[-1]:
+                        # print('Buy singal')
+                        o = self.buy()
+                        self.order = None
                 # print('*' * 50)
-
         elif self.order is None:
-            self.order = self.sell(exectype=self.p.stoptype,
-                                   trailamount=self.p.trailamount,
-                                   trailpercent=self.p.trailpercent)
+            if self.sellsingal:
+                print('Sell singal')
+                self.order = self.sell()
+            else:
+                print('Sell stop limit')
+                # self.order = self.sell(price=self.previousbuyprice, exectype=self.p.stoptype,trailamount=self.p.trailamount, trailpercent=self.p.trailpercent)
+                self.order = self.sell(exectype=self.p.stoptype,trailamount=self.p.trailamount, trailpercent=self.p.trailpercent)
 
             if self.p.trailamount:
                 tcheck = self.data.close - self.p.trailamount
             else:
                 tcheck = self.data.close * (1.0 - self.p.trailpercent)
-            # print(','.join(
-            #     map(str, [self.datetime.date(), self.data.close[0],
-            #               self.order.created.price, tcheck])
-            #     )
-            # )
-            print('-' * 10)
         else:
             if self.p.trailamount:
                 tcheck = self.data.close - self.p.trailamount
             else:
                 tcheck = self.data.close * (1.0 - self.p.trailpercent)
-            # print(','.join(
-            #     map(str, [self.datetime.date(), self.data.close[0],
-            #               self.order.created.price, tcheck])
-            #     )
-            # )
 
 
 def runstrat(args=None):
@@ -164,7 +174,7 @@ def runstrat(args=None):
     cerebro.broker.setcash(10000.0)
 
     # Add a FixedSize sizer according to the stake
-    cerebro.addsizer(bt.sizers.PercentSizer, percents=90)
+    cerebro.addsizer(bt.sizers.PercentSizer, percents=50)
 
     # Set the commission
     cerebro.broker.setcommission(commission=0.00075)
