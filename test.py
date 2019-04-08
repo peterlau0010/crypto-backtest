@@ -25,24 +25,26 @@ class St(bt.Strategy):
             print('%s, %s' % (dt.isoformat(), txt))
 
     def __init__(self):
-        # self.dataclose = self.datas[0].close
+        self.dataclose = self.datas[0].close
         self.order = None
         self.previousbuyprice=None
         self.kd = bt.indicators.StochasticFull(self.data,period=5, safediv=True)
         self.macd = bt.indicators.MACD(self.data)
         self.rsiShort = bt.indicators.RelativeStrengthIndex(self.data,period=9)
-        self.emaShort = bt.indicators.ExponentialMovingAverage(self.data,period=50)
-        self.emaLong = bt.indicators.ExponentialMovingAverage(self.data,period=100)
+        self.psar = bt.indicators.ParabolicSAR()
+        # self.emaShort = bt.indicators.ExponentialMovingAverage(self.data,period=50)
+        # self.emaLong = bt.indicators.ExponentialMovingAverage(self.data,period=100)
         self.buysingal = bt.And(
-            self.macd.lines.macd > self.macd.lines.signal,
+            # self.macd.lines.macd > self.macd.lines.signal,
             self.kd.lines.percK < 20,
-            self.kd.lines.percD < 20,
-            self.kd.lines.percK > self.kd.lines.percD,
+            # self.kd.lines.percD < 15,
+            # self.kd.lines.percK > self.kd.lines.percD,
             # EMA
-            self.emaShort>self.emaLong,
+            # self.emaShort>self.emaLong,
+
             # bt.indicators.CrossUp(self.kd.lines.percD, self.kd.lines.percK),
-            self.rsiShort.lines.rsi < 20, #RSI below 30, over sell, short turn use 9, long use 14
-            # self.dataclose > self.psar.lines.psar
+            # self.rsiShort.lines.rsi < 20, #RSI below 30, over sell, short turn use 9, long use 14
+            self.dataclose > self.psar.lines.psar
             
             # self.rsiCrossUp,
         )
@@ -50,12 +52,12 @@ class St(bt.Strategy):
         self.sellsingal = bt.And(
             # self.emaShort < self.emaLong,
             # self.percKCrossDownPercD,
-            # self.kd.lines.percK > 80,
+            self.kd.lines.percK > 70,
             # self.macd.lines.macd < self.macd.lines.signal,
             # self.kd.lines.percD > 85,
             # self.kd.lines.percK > 85,
             # bt.indicators.CrossDown(self.kd.lines.percD, self.kd.lines.percK),
-            self.rsiShort.lines.rsi > 70, #RSI over 70, over buy
+            # self.rsiShort.lines.rsi > 60, #RSI over 70, over buy
             # self.dataclose < self.psar.lines.psar
         )
     # def stop(self):
@@ -102,15 +104,21 @@ class St(bt.Strategy):
     def next(self):
         if not self.position:
             if self.buysingal:
-                if self.rsiShort[0] > self.rsiShort[-1]:
-                    if self.kd.lines.percK[0] > self.kd.lines.percK[-1]:
+                # if self.rsiShort[0] > self.rsiShort[-1]:
+                #     if self.kd.lines.percK[0] > self.kd.lines.percK[-1]:
                         # print('Buy singal')
-                        o = self.buy()
-                        self.order = None
+                if self.psar.lines.psar[-1] > self.psar.lines.psar[0]:
+                    o = self.buy()
+                    self.order = None
                 # print('*' * 50)
+        elif self.kd[0]> 70:
+            print('Sell singal1')
+            self.order = self.sell()
         elif self.order is None:
-            if self.sellsingal:
-                print('Sell singal')
+            
+            if self.kd[0]> 70:
+                print('Sell singal2')
+
                 self.order = self.sell()
             else:
                 print('Sell stop limit')
@@ -122,6 +130,8 @@ class St(bt.Strategy):
             else:
                 tcheck = self.data.close * (1.0 - self.p.trailpercent)
         else:
+
+
             if self.p.trailamount:
                 tcheck = self.data.close - self.p.trailamount
             else:
